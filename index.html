@@ -4,19 +4,39 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gerenciador de Drift Trikes</title>
-  <link href="./src/output.css" rel="stylesheet" />
-  <!-- Firebase v9 modular -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import {
-      getDatabase,
-      ref,
-      onValue,
-      set,
-      push,
-      update,
-    } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.2/dist/tailwind.min.css" rel="stylesheet" />
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js"></script>
+</head>
+<body class="bg-gray-100 font-sans min-h-screen flex flex-col">
 
+  <div class="container mx-auto p-6 max-w-7xl flex-grow">
+    <h1 class="text-4xl font-extrabold text-center mb-8 text-gray-800">Gerenciador de Drift Trikes</h1>
+
+    <!-- Grid container para triciclos -->
+    <div id="trikesContainer" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8"></div>
+
+    <!-- Relatório do Dia -->
+    <section class="mt-12 p-8 bg-white rounded-lg shadow-md max-w-3xl mx-auto">
+      <h2 class="text-3xl font-bold mb-6 text-center text-gray-900">Relatório Diário</h2>
+      <div class="grid grid-cols-2 gap-6 text-xl text-gray-700">
+        <div>Total de Sessões:</div>
+        <div class="text-right font-semibold" id="totalSessions">0</div>
+
+        <div>Valor Total (R$):</div>
+        <div class="text-right font-semibold" id="totalValue">0.00</div>
+
+        <div>Total de Descontos (R$):</div>
+        <div class="text-right font-semibold" id="totalDiscount">0.00</div>
+
+        <div>Valor Final (R$):</div>
+        <div class="text-right font-semibold text-blue-600" id="finalTotalValue">0.00</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Configuração do Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyDizfkzSJMXyY30M1hHTkxZ8PZjrMZtMmU",
       authDomain: "drift-trike-timer.firebaseapp.com",
@@ -24,68 +44,60 @@
       projectId: "drift-trike-timer",
       storageBucket: "drift-trike-timer.firebasestorage.app",
       messagingSenderId: "904950542869",
-      appId: "1:904950542869:web:ec2d83299243aa6e82141c",
+      appId: "1:904950542869:web:ec2d83299243aa6e82141c"
     };
 
-    // Inicializa Firebase e Database
-    const app = initializeApp(firebaseConfig);
-    const database = getDatabase(app);
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
 
-    const RATE_PER_10_MIN = 20;
-
-    // Estado dos triciclos
+    const RATE_PER_10_MIN = 20; // R$20 por 10 minutos
     const trikes = Array.from({ length: 10 }, (_, i) => ({
       id: i + 1,
       timer: null,
       timeLeft: 0,
-      isRunning: false,
+      isRunning: false
     }));
 
-    // Elementos do DOM
-    const totalSessions = document.getElementById("totalSessions");
-    const totalValue = document.getElementById("totalValue");
-    const totalDiscount = document.getElementById("totalDiscount");
-    const finalTotalValue = document.getElementById("finalTotalValue");
-    const trikesContainer = document.getElementById("trikesContainer");
+    const totalSessions = document.getElementById('totalSessions');
+    const totalValue = document.getElementById('totalValue');
+    const totalDiscount = document.getElementById('totalDiscount');
+    const finalTotalValue = document.getElementById('finalTotalValue');
+    const trikesContainer = document.getElementById('trikesContainer');
 
-    // Formata segundos em mm:ss
-    function formatTime(seconds) {
-      const min = Math.floor(seconds / 60);
-      const sec = seconds % 60;
-      return `${min.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+    // Atualizar relatório do dia
+    function updateReport() {
+      database.ref('sessions').once('value', snapshot => {
+        const sessions = snapshot.val() ? Object.values(snapshot.val()) : [];
+        const total = sessions.reduce((sum, s) => sum + s.value, 0);
+        const totalDisc = sessions.reduce((sum, s) => sum + s.discount, 0);
+        totalSessions.textContent = sessions.length;
+        totalValue.textContent = total.toFixed(2);
+        totalDiscount.textContent = totalDisc.toFixed(2);
+        finalTotalValue.textContent = (total - totalDisc).toFixed(2);
+      });
     }
 
-    // Calcula valor conforme minutos
+    // Calcular valor
     function calculateValue(minutes) {
       return (minutes / 10) * RATE_PER_10_MIN;
     }
 
-    // Toca alerta sonoro e mostra alerta visual
+    // Formatar tempo
+    function formatTime(seconds) {
+      const min = Math.floor(seconds / 60);
+      const sec = seconds % 60;
+      return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    // Alerta sonoro e visual
     function playAlert() {
-      const audio = new Audio("https://www.soundjay.com/buttons/beep-01a.mp3");
+      const audio = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
       audio.play();
-      alert("Tempo esgotado!");
+      alert('Tempo esgotado!');
     }
 
-    // Atualiza relatório do dia
-    function updateReport() {
-      const sessionsRef = ref(database, "sessions");
-      onValue(
-        sessionsRef,
-        (snapshot) => {
-          const sessions = snapshot.val() ? Object.values(snapshot.val()) : [];
-          const total = sessions.reduce((acc, s) => acc + (s.value || 0), 0);
-          const totalDisc = sessions.reduce((acc, s) => acc + (s.discount || 0), 0);
-          totalSessions.textContent = sessions.length;
-          totalValue.textContent = total.toFixed(2);
-          totalDiscount.textContent = totalDisc.toFixed(2);
-          finalTotalValue.textContent = (total - totalDisc).toFixed(2);
-        },
-        { onlyOnce: true }
-      );
-    }
-
-    // Atualiza UI de um trike conforme status
+    // Atualizar interface de um trike
     function updateTrikeUI(trikeId) {
       const trike = trikes[trikeId - 1];
       const trikeElement = document.getElementById(`trike-${trikeId}`);
@@ -97,27 +109,25 @@
       const renewBtn = trikeElement.querySelector(`#renewTimer-${trikeId}`);
       const timerStatus = trikeElement.querySelector(`#timerStatus-${trikeId}`);
 
-      const isRunning = trike.isRunning;
-
-      const activeClass = isRunning ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600";
-
-      btn10min.className = `flex-1 ${activeClass} text-white py-2 rounded`;
-      btn20min.className = `flex-1 ${activeClass} text-white py-2 rounded`;
-      startBtn.textContent = isRunning ? "Em Uso" : "Iniciar";
-      startBtn.disabled = isRunning;
-      renewBtn.classList.toggle("hidden", !isRunning);
-      timerStatus.classList.toggle("hidden", !isRunning);
+      const statusClass = trike.isRunning ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700';
+      btn10min.className = `flex-1 ${statusClass} text-white py-3 rounded transition`;
+      btn20min.className = `flex-1 ${statusClass} text-white py-3 rounded transition`;
+      startBtn.textContent = trike.isRunning ? 'Em Uso' : 'Iniciar';
+      startBtn.disabled = trike.isRunning;
+      renewBtn.classList.toggle('hidden', !trike.isRunning);
+      timerStatus.classList.toggle('hidden', !trike.isRunning);
     }
 
-    // Inicia contagem regressiva para um trike
+    // Iniciar contagem
     function startCountdown(trikeId, minutes) {
       const trike = trikes[trikeId - 1];
       if (trike.timer) clearInterval(trike.timer);
-
       trike.timeLeft = minutes * 60;
       trike.isRunning = true;
 
       const trikeElement = document.getElementById(`trike-${trikeId}`);
+      if (!trikeElement) return;
+
       const discountInput = trikeElement.querySelector(`#discount-${trikeId}`);
       const paymentStatus = trikeElement.querySelector(`#paymentStatus-${trikeId}`);
       const timeRemaining = trikeElement.querySelector(`#timeRemaining-${trikeId}`);
@@ -128,153 +138,129 @@
 
       const value = calculateValue(minutes);
       const discount = parseFloat(discountInput.value) || 0;
-      const final = Math.max(value - discount, 0);
+      const final = value - discount;
 
-      // Atualiza display
       currentValue.textContent = value.toFixed(2);
       currentDiscount.textContent = discount.toFixed(2);
       finalValue.textContent = final.toFixed(2);
-      currentPaymentStatus.textContent = paymentStatus.value === "pago" ? "Pago" : "Não Pago";
-      timeRemaining.textContent = formatTime(trike.timeLeft);
+      currentPaymentStatus.textContent = paymentStatus.value === 'pago' ? 'Pago' : 'Não Pago';
 
-      // Atualiza Firebase
-      set(ref(database, `trikes/${trikeId}`), {
+      database.ref(`trikes/${trikeId}`).set({
         timeLeft: trike.timeLeft,
         isRunning: true,
         value,
         discount,
         finalValue: final,
-        paymentStatus: paymentStatus.value,
+        paymentStatus: paymentStatus.value
       });
 
-      // Contagem regressiva
       trike.timer = setInterval(() => {
         trike.timeLeft--;
-        if (trike.timeLeft < 0) {
+        timeRemaining.textContent = formatTime(trike.timeLeft);
+        database.ref(`trikes/${trikeId}/timeLeft`).set(trike.timeLeft);
+
+        if (trike.timeLeft <= 0) {
           clearInterval(trike.timer);
           trike.isRunning = false;
           playAlert();
-
-          // Atualiza Firebase com status final
-          set(ref(database, `trikes/${trikeId}`), {
+          database.ref(`trikes/${trikeId}`).set({
             timeLeft: 0,
             isRunning: false,
             value,
             discount,
             finalValue: final,
-            paymentStatus: paymentStatus.value,
+            paymentStatus: paymentStatus.value
           });
-
-          // Salva sessão no histórico
-          push(ref(database, "sessions"), {
+          // Adiciona a sessão no relatório diário
+          const newSessionRef = database.ref('sessions').push();
+          newSessionRef.set({
             trikeId,
             minutes,
             value,
             discount,
             finalValue: final,
             paymentStatus: paymentStatus.value,
-            timestamp: Date.now(),
+            timestamp: Date.now()
           });
-
           updateReport();
           updateTrikeUI(trikeId);
-          return;
         }
-
-        // Atualiza tempo restante no DOM e no Firebase
-        timeRemaining.textContent = formatTime(trike.timeLeft);
-        update(ref(database, `trikes/${trikeId}`), { timeLeft: trike.timeLeft });
       }, 1000);
 
       updateTrikeUI(trikeId);
     }
 
-    // Cria interface de um trike no DOM
+    // Gerar interface para cada trike
     function createTrikeUI(trikeId) {
-      const div = document.createElement("div");
+      const div = document.createElement('div');
       div.id = `trike-${trikeId}`;
-      div.className = "bg-white p-4 rounded-lg shadow-md mb-4";
+      div.className = "bg-white p-6 rounded-lg shadow-lg flex flex-col space-y-4 max-w-md mx-auto";
 
       div.innerHTML = `
-        <h3 class="text-lg font-semibold mb-2">Drift Trike ${trikeId}</h3>
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700">Selecionar Tempo</label>
-          <div class="flex space-x-2 mt-2">
-            <button id="btn10min-${trikeId}" class="flex-1 bg-green-500 text-white py-2 rounded hover:bg-green-600">10 Min</button>
-            <button id="btn20min-${trikeId}" class="flex-1 bg-green-500 text-white py-2 rounded hover:bg-green-600">20 Min</button>
-          </div>
-          <input id="customTime-${trikeId}" type="number" min="1" placeholder="Tempo personalizado (min)" class="mt-2 w-full border border-gray-300 rounded p-2 text-sm" />
+        <h3 class="text-xl font-bold text-center mb-2">Drift Trike ${trikeId}</h3>
+
+        <div class="flex justify-between space-x-3">
+          <button id="btn10min-${trikeId}" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded transition">10 Min</button>
+          <button id="btn20min-${trikeId}" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded transition">20 Min</button>
         </div>
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700">Desconto (R$)</label>
-          <input id="discount-${trikeId}" type="number" min="0" step="0.01" placeholder="0.00" class="w-full border border-gray-300 rounded p-2 text-sm" />
-        </div>
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700">Status de Pagamento</label>
-          <select id="paymentStatus-${trikeId}" class="w-full border border-gray-300 rounded p-2 text-sm">
-            <option value="pago">Pago</option>
-            <option value="nao_pago">Não Pago</option>
-          </select>
-        </div>
-        <button id="startTimer-${trikeId}" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">Iniciar</button>
-        <button id="renewTimer-${trikeId}" class="w-full bg-yellow-500 text-white py-2 rounded hover:bg-yellow-600 mt-2 hidden">Renovar Tempo</button>
-        <div id="timerStatus-${trikeId}" class="hidden mt-4">
-          <p class="text-lg font-semibold">Tempo Restante: <span id="timeRemaining-${trikeId}">00:00</span></p>
-          <p>Valor: R$ <span id="currentValue-${trikeId}">0.00</span></p>
-          <p>Desconto: R$ <span id="currentDiscount-${trikeId}">0.00</span></p>
-          <p>Valor Final: R$ <span id="finalValue-${trikeId}">0.00</span></p>
-          <p>Status: <span id="currentPaymentStatus-${trikeId}">Não Pago</span></p>
+
+        <input id="customTime-${trikeId}" type="number" min="1" placeholder="Tempo personalizado (min)" class="w-full border border-gray-300 rounded p-3 text-lg text-center focus:outline-none focus:ring-2 focus:ring-green-500" />
+
+        <input id="discount-${trikeId}" type="number" min="0" step="0.01" placeholder="Desconto (R$)" class="w-full border border-gray-300 rounded p-3 text-lg text-center focus:outline-none focus:ring-2 focus:ring-yellow-400" />
+
+        <select id="paymentStatus-${trikeId}" class="w-full border border-gray-300 rounded p-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <option value="pago">Pago</option>
+          <option value="nao_pago">Não Pago</option>
+        </select>
+
+        <button id="startTimer-${trikeId}" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded transition font-semibold">Iniciar</button>
+        <button id="renewTimer-${trikeId}" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded mt-2 transition hidden">Renovar Tempo</button>
+
+        <div id="timerStatus-${trikeId}" class="hidden bg-gray-50 rounded p-4 mt-4 space-y-2 text-center">
+          <p class="text-2xl font-mono font-bold">Tempo Restante: <span id="timeRemaining-${trikeId}">00:00</span></p>
+          <p>Valor: <span class="font-semibold text-green-700">R$ <span id="currentValue-${trikeId}">0.00</span></span></p>
+          <p>Desconto: <span class="font-semibold text-yellow-700">R$ <span id="currentDiscount-${trikeId}">0.00</span></span></p>
+          <p>Valor Final: <span class="font-semibold text-blue-700">R$ <span id="finalValue-${trikeId}">0.00</span></span></p>
+          <p>Status: <span id="currentPaymentStatus-${trikeId}" class="font-semibold"></span></p>
         </div>
       `;
 
       trikesContainer.appendChild(div);
 
-      // Eventos
-      div.querySelector(`#btn10min-${trikeId}`).addEventListener("click", () => {
-        div.querySelector(`#customTime-${trikeId}`).value = 10;
+      // Botões e eventos
+      div.querySelector(`#btn10min-${trikeId}`).addEventListener('click', () => {
+        if (!trikes[trikeId - 1].isRunning) {
+          startCountdown(trikeId, 10);
+        }
       });
 
-      div.querySelector(`#btn20min-${trikeId}`).addEventListener("click", () => {
-        div.querySelector(`#customTime-${trikeId}`).value = 20;
+      div.querySelector(`#btn20min-${trikeId}`).addEventListener('click', () => {
+        if (!trikes[trikeId - 1].isRunning) {
+          startCountdown(trikeId, 20);
+        }
       });
 
-      div.querySelector(`#startTimer-${trikeId}`).addEventListener("click", () => {
-        const minutes = parseInt(div.querySelector(`#customTime-${trikeId}`).value);
-        if (minutes > 0) startCountdown(trikeId, minutes);
-        else alert("Por favor, insira um tempo válido maior que zero.");
-      });
-
-      div.querySelector(`#renewTimer-${trikeId}`).addEventListener("click", () => {
-        const minutes = parseInt(div.querySelector(`#customTime-${trikeId}`).value);
-        if (minutes > 0) startCountdown(trikeId, minutes);
-        else alert("Por favor, insira um tempo válido maior que zero.");
+      div.querySelector(`#startTimer-${trikeId}`).addEventListener('click', () => {
+        if (!trikes[trikeId - 1].isRunning) {
+          const customTimeInput = div.querySelector(`#customTime-${trikeId}`);
+          const minutes = parseInt(customTimeInput.value);
+          if (isNaN(minutes) || minutes < 1) {
+            alert('Digite um tempo válido (mínimo 1 minuto).');
+            return;
+          }
+          startCountdown(trikeId, minutes);
+        }
       });
     }
 
-    // Inicialização da aplicação
+    // Inicializar app
     function init() {
-      // Cria UI para todos os triciclos
-      for (let i = 1; i <= 10; i++) {
-        createTrikeUI(i);
-      }
-      // Atualiza relatório inicial
+      trikes.forEach(trike => createTrikeUI(trike.id));
       updateReport();
     }
 
-    // Start app
-    window.onload = init;
+    init();
   </script>
-</head>
-<body class="bg-gray-100 p-6">
-  <h1 class="text-3xl font-bold mb-6">Controle de Drift Trikes</h1>
-  <div id="trikesContainer"></div>
 
-  <div class="mt-8 p-4 bg-white rounded shadow-md">
-    <h2 class="text-xl font-semibold mb-4">Relatório Diário</h2>
-    <p>Total de Sessões: <span id="totalSessions">0</span></p>
-    <p>Valor Total: R$ <span id="totalValue">0.00</span></p>
-    <p>Total de Descontos: R$ <span id="totalDiscount">0.00</span></p>
-    <p>Valor Final: R$ <span id="finalTotalValue">0.00</span></p>
-  </div>
 </body>
 </html>
