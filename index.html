@@ -1,103 +1,391 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gerenciador de Drift Trikes</title>
-  <link href="./src/output.css" rel="stylesheet">
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <!-- Firebase SDK v8 -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
-<body class="bg-gray-100 font-sans">
-  <div class="container mx-auto p-4 max-w-2xl">
-    <h1 class="text-2xl font-bold text-center mb-4">Gerenciador de Drift Trikes</h1>
-    <div id="trikesContainer" class="space-y-4"></div>
+<body class="bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 font-sans min-h-screen flex flex-col items-center p-6">
+  <div class="container max-w-3xl bg-white rounded-lg shadow-lg p-6 w-full">
+    <h1 class="text-3xl font-extrabold text-center mb-8 text-gray-900">Gerenciador de Drift Trikes</h1>
+
+    <div id="trikesContainer" class="space-y-6"></div>
+
+    <div class="bg-gray-100 p-6 rounded-lg shadow-md mt-8">
+      <h2 class="text-xl font-semibold mb-4 text-gray-800">Relatório do Dia</h2>
+      <p>Total de Sessões: <span id="totalSessions" class="font-bold">0</span></p>
+      <p>Valor Total: R$ <span id="totalValue" class="font-bold">0.00</span></p>
+      <p>Desconto Total: R$ <span id="totalDiscount" class="font-bold">0.00</span></p>
+      <p>Valor Final: R$ <span id="finalTotalValue" class="font-bold">0.00</span></p>
+    </div>
   </div>
+
   <script>
-    window.addEventListener('DOMContentLoaded', () => {
-      const firebaseConfig = {
-        apiKey: "AIzaSyDizfkzSJMXyY30M1hHTkxZ8PZjrMZtMmU",
-        authDomain: "drift-trike-timer.firebaseapp.com",
-        databaseURL: "https://drift-trike-timer-default-rtdb.firebaseio.com",
-        projectId: "drift-trike-timer",
-        storageBucket: "drift-trike-timer.appspot.com",
-        messagingSenderId: "904950542869",
-        appId: "1:904950542869:web:ec2d83299243aa6e82141c"
-      };
+    // Configuração do Firebase (use sua config!)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDizfkzSJMXyY30M1hHTkxZ8PZjrMZtMmU",
+      authDomain: "drift-trike-timer.firebaseapp.com",
+      databaseURL: "https://drift-trike-timer-default-rtdb.firebaseio.com",
+      projectId: "drift-trike-timer",
+      storageBucket: "drift-trike-timer.firebasestorage.app",
+      messagingSenderId: "904950542869",
+      appId: "1:904950542869:web:ec2d83299243aa6e82141c"
+    };
 
-      firebase.initializeApp(firebaseConfig);
-      const db = firebase.database();
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
 
-      const trikeCount = 10;
+    const RATE_PER_10_MIN = 20;
+    const trikes = Array.from({ length: 10 }, (_, i) => ({
+      id: i + 1,
+      timer: null,
+      timeLeft: 0,
+      isRunning: false,
+      isPaused: false
+    }));
 
-      function formatTime(sec) {
-        const m = String(Math.floor(sec / 60)).padStart(2, '0');
-        const s = String(sec % 60).padStart(2, '0');
-        return `${m}:${s}`;
+    const totalSessions = document.getElementById('totalSessions');
+    const totalValue = document.getElementById('totalValue');
+    const totalDiscount = document.getElementById('totalDiscount');
+    const finalTotalValue = document.getElementById('finalTotalValue');
+    const trikesContainer = document.getElementById('trikesContainer');
+
+    function updateReport() {
+      database.ref('sessions').once('value', snapshot => {
+        const sessions = snapshot.val() ? Object.values(snapshot.val()) : [];
+        const total = sessions.reduce((sum, s) => sum + s.value, 0);
+        const totalDisc = sessions.reduce((sum, s) => sum + s.discount, 0);
+        totalSessions.textContent = sessions.length;
+        totalValue.textContent = total.toFixed(2);
+        totalDiscount.textContent = totalDisc.toFixed(2);
+        finalTotalValue.textContent = (total - totalDisc).toFixed(2);
+      });
+    }
+
+    function calculateValue(minutes) {
+      return (minutes / 10) * RATE_PER_10_MIN;
+    }
+
+    function formatTime(seconds) {
+      const min = Math.floor(seconds / 60);
+      const sec = seconds % 60;
+      return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    function playAlert() {
+      const audio = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
+      audio.play();
+      alert('Tempo esgotado!');
+    }
+
+    function updateTrikeUI(trikeId) {
+      const trike = trikes[trikeId - 1];
+      const trikeElement = document.getElementById(`trike-${trikeId}`);
+      const btn10min = trikeElement.querySelector(`#btn10min-${trikeId}`);
+      const btn20min = trikeElement.querySelector(`#btn20min-${trikeId}`);
+      const startBtn = trikeElement.querySelector(`#startTimer-${trikeId}`);
+      const renewBtn = trikeElement.querySelector(`#renewTimer-${trikeId}`);
+      const pauseBtn = trikeElement.querySelector(`#pauseTimer-${trikeId}`);
+      const resumeBtn = trikeElement.querySelector(`#resumeTimer-${trikeId}`);
+      const resetBtn = trikeElement.querySelector(`#resetTimer-${trikeId}`);
+      const timerStatus = trikeElement.querySelector(`#timerStatus-${trikeId}`);
+
+      const baseClassRunning = 'bg-red-500 hover:bg-red-600';
+      const baseClassStopped = 'bg-green-500 hover:bg-green-600';
+
+      btn10min.className = `flex-1 ${trike.isRunning ? baseClassRunning : baseClassStopped} text-white py-2 rounded`;
+      btn20min.className = `flex-1 ${trike.isRunning ? baseClassRunning : baseClassStopped} text-white py-2 rounded`;
+
+      startBtn.textContent = trike.isRunning ? 'Em Uso' : 'Iniciar';
+      startBtn.disabled = trike.isRunning;
+
+      renewBtn.classList.toggle('hidden', !trike.isRunning);
+      pauseBtn.classList.toggle('hidden', !(trike.isRunning && !trike.isPaused));
+      resumeBtn.classList.toggle('hidden', !(trike.isRunning && trike.isPaused));
+      resetBtn.classList.toggle('hidden', !trike.isRunning);
+      timerStatus.classList.toggle('hidden', !trike.isRunning);
+
+      if (!trike.isRunning) {
+        // Se não estiver rodando, ocultar os botões pausa/retomar/reset e mostrar start ativo
+        pauseBtn.classList.add('hidden');
+        resumeBtn.classList.add('hidden');
+        resetBtn.classList.add('hidden');
+        startBtn.disabled = false;
       }
+    }
 
-      function createTrikeUI(id) {
-        const div = document.createElement('div');
-        div.id = `trike-${id}`;
-        div.className = 'bg-white p-4 rounded shadow';
-        div.innerHTML = `
-          <h2 class="text-lg font-semibold mb-2">Trike ${id}</h2>
-          <div class="flex items-center gap-2">
-            <input id="input-${id}" type="number" min="1" placeholder="Minutos" class="border rounded p-1 w-24">
-            <button id="start-${id}" class="bg-blue-500 text-white px-2 py-1 rounded">Iniciar</button>
-            <button id="pause-${id}" class="bg-yellow-500 text-white px-2 py-1 rounded">Pausar</button>
-            <button id="reset-${id}" class="bg-red-500 text-white px-2 py-1 rounded">Reset</button>
-          </div>
-          <p class="mt-2">Tempo restante: <span id="display-${id}">00:00</span></p>
-        `;
-        document.getElementById('trikesContainer').appendChild(div);
+    function startCountdown(trikeId, minutes) {
+      const trike = trikes[trikeId - 1];
+      if (trike.timer) clearInterval(trike.timer);
 
-        let interval = null;
+      trike.timeLeft = minutes * 60;
+      trike.isRunning = true;
+      trike.isPaused = false;
 
-        db.ref(`trikes/${id}`).on('value', snapshot => {
-          const data = snapshot.val();
-          if (!data) return;
-          document.getElementById(`display-${id}`).textContent = formatTime(data.timeLeft);
-          if (data.isRunning && !interval) {
-            interval = setInterval(() => {
-              db.ref(`trikes/${id}/timeLeft`).once('value').then(snap => {
-                let time = snap.val();
-                if (time > 0) {
-                  db.ref(`trikes/${id}`).update({ timeLeft: time - 1 });
-                } else {
-                  clearInterval(interval);
-                  interval = null;
-                  db.ref(`trikes/${id}`).update({ isRunning: false });
-                }
-              });
-            }, 1000);
-          } else if (!data.isRunning && interval) {
-            clearInterval(interval);
-            interval = null;
+      updateFirebaseTrike(trikeId, {
+        timeLeft: trike.timeLeft,
+        isRunning: true,
+        isPaused: false,
+      });
+
+      startTimerInterval(trikeId);
+
+      updateTrikeUI(trikeId);
+      updateTimerDisplay(trikeId);
+      updateValuesUI(trikeId, minutes);
+    }
+
+    function startTimerInterval(trikeId) {
+      const trike = trikes[trikeId - 1];
+      const trikeElement = document.getElementById(`trike-${trikeId}`);
+      const timeRemaining = trikeElement.querySelector(`#timeRemaining-${trikeId}`);
+
+      if (trike.timer) clearInterval(trike.timer);
+
+      trike.timer = setInterval(() => {
+        if (!trike.isPaused && trike.timeLeft > 0) {
+          trike.timeLeft--;
+          timeRemaining.textContent = formatTime(trike.timeLeft);
+          updateFirebaseTrike(trikeId, { timeLeft: trike.timeLeft });
+
+          if (trike.timeLeft <= 0) {
+            clearInterval(trike.timer);
+            trike.isRunning = false;
+            trike.isPaused = false;
+            playAlert();
+            updateTrikeUI(trikeId);
+            saveSession(trikeId);
+            updateReport();
+            updateFirebaseTrike(trikeId, { timeLeft: 0, isRunning: false, isPaused: false });
           }
-        });
+        }
+      }, 1000);
+    }
 
-        document.getElementById(`start-${id}`).addEventListener('click', () => {
-          const minutes = parseInt(document.getElementById(`input-${id}`).value);
-          if (!minutes || minutes <= 0) return;
-          db.ref(`trikes/${id}`).set({ timeLeft: minutes * 60, isRunning: true });
-        });
+    function updateValuesUI(trikeId, minutes) {
+      const trikeElement = document.getElementById(`trike-${trikeId}`);
+      const discountInput = trikeElement.querySelector(`#discount-${trikeId}`);
+      const paymentStatus = trikeElement.querySelector(`#paymentStatus-${trikeId}`);
+      const currentValue = trikeElement.querySelector(`#currentValue-${trikeId}`);
+      const currentDiscount = trikeElement.querySelector(`#currentDiscount-${trikeId}`);
+      const finalValue = trikeElement.querySelector(`#finalValue-${trikeId}`);
+      const currentPaymentStatus = trikeElement.querySelector(`#currentPaymentStatus-${trikeId}`);
 
-        document.getElementById(`pause-${id}`).addEventListener('click', () => {
-          db.ref(`trikes/${id}/isRunning`).once('value').then(snapshot => {
-            db.ref(`trikes/${id}`).update({ isRunning: !snapshot.val() });
-          });
-        });
+      const value = calculateValue(minutes);
+      const discount = parseFloat(discountInput.value) || 0;
+      const final = value - discount;
 
-        document.getElementById(`reset-${id}`).addEventListener('click', () => {
-          db.ref(`trikes/${id}`).set({ timeLeft: 0, isRunning: false });
+      currentValue.textContent = value.toFixed(2);
+      currentDiscount.textContent = discount.toFixed(2);
+      finalValue.textContent = final.toFixed(2);
+      currentPaymentStatus.textContent = paymentStatus.value === 'pago' ? 'Pago' : 'Não Pago';
+
+      updateFirebaseTrike(trikeId, {
+        value,
+        discount,
+        finalValue: final,
+        paymentStatus: paymentStatus.value,
+      });
+    }
+
+    function updateFirebaseTrike(trikeId, data) {
+      database.ref(`trikes/${trikeId}`).update(data);
+    }
+
+    function pauseTimer(trikeId) {
+      const trike = trikes[trikeId - 1];
+      trike.isPaused = true;
+      updateFirebaseTrike(trikeId, { isPaused: true });
+      updateTrikeUI(trikeId);
+    }
+
+    function resumeTimer(trikeId) {
+      const trike = trikes[trikeId - 1];
+      trike.isPaused = false;
+      updateFirebaseTrike(trikeId, { isPaused: false });
+      updateTrikeUI(trikeId);
+    }
+
+    function resetTimer(trikeId) {
+      const trike = trikes[trikeId - 1];
+      clearInterval(trike.timer);
+      trike.timer = null;
+      trike.isRunning = false;
+      trike.isPaused = false;
+      trike.timeLeft = 0;
+      updateFirebaseTrike(trikeId, {
+        isRunning: false,
+        isPaused: false,
+        timeLeft: 0
+      });
+      updateTrikeUI(trikeId);
+      updateTimerDisplay(trikeId);
+    }
+
+    function saveSession(trikeId) {
+      const trikeElement = document.getElementById(`trike-${trikeId}`);
+      const discountInput = trikeElement.querySelector(`#discount-${trikeId}`);
+      const paymentStatus = trikeElement.querySelector(`#paymentStatus-${trikeId}`);
+      const customTimeInput = trikeElement.querySelector(`#customTime-${trikeId}`);
+
+      // Usar o tempo que foi definido no início ou o tempo passado
+      const timeUsed = (trikes[trikeId - 1].timeLeft === 0)
+        ? (parseInt(customTimeInput.value) || 0)
+        : 0;
+
+      // Mas para garantir, pegar valor do Firebase ou o tempo configurado
+      // Aqui pegamos o valor final armazenado no Firebase:
+
+      database.ref(`trikes/${trikeId}`).once('value').then(snapshot => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        const value = data.value || 0;
+        const discount = data.discount || 0;
+        const finalValue = data.finalValue || 0;
+        const paymentStatusValue = data.paymentStatus || 'nao_pago';
+
+        const newSessionKey = database.ref('sessions').push().key;
+        database.ref(`sessions/${newSessionKey}`).set({
+          trikeId,
+          minutes: (data.timeLeft === 0) ? (customTimeInput.value || 0) : (data.timeLeft / 60),
+          value,
+          discount,
+          finalValue,
+          paymentStatus: paymentStatusValue,
+          timestamp: Date.now()
         });
+      });
+    }
+
+    // Criar a UI dos trikes
+    function createTrikeUI(trike) {
+      const trikeId = trike.id;
+      const container = document.createElement('div');
+      container.id = `trike-${trikeId}`;
+      container.className = "bg-white rounded-lg shadow p-6";
+
+      container.innerHTML = `
+        <h3 class="text-xl font-semibold mb-2 text-gray-900">Drift Trike #${trikeId}</h3>
+
+        <div class="flex space-x-2 mb-4">
+          <button id="btn10min-${trikeId}" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded">10 Min</button>
+          <button id="btn20min-${trikeId}" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded">20 Min</button>
+        </div>
+
+        <div class="mb-4">
+          <label class="block font-medium mb-1" for="customTime-${trikeId}">Tempo Personalizado (minutos):</label>
+          <input id="customTime-${trikeId}" type="number" min="1" class="border rounded px-3 py-2 w-full" placeholder="Digite o tempo"/>
+        </div>
+
+        <div class="mb-4 flex space-x-2">
+          <button id="startTimer-${trikeId}" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded">Iniciar</button>
+          <button id="pauseTimer-${trikeId}" class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white py-2 rounded hidden">Pausar</button>
+          <button id="resumeTimer-${trikeId}" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded hidden">Retomar</button>
+          <button id="resetTimer-${trikeId}" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded hidden">Resetar</button>
+        </div>
+
+        <div id="timerStatus-${trikeId}" class="text-center font-bold text-lg text-gray-700 hidden mb-4">
+          Tempo Restante: <span id="timeRemaining-${trikeId}">00:00</span>
+        </div>
+
+        <div class="mb-4">
+          <label class="block font-medium mb-1" for="discount-${trikeId}">Desconto (R$):</label>
+          <input id="discount-${trikeId}" type="number" min="0" step="0.01" class="border rounded px-3 py-2 w-full" value="0" />
+        </div>
+
+        <div class="mb-4">
+          <label class="block font-medium mb-1" for="paymentStatus-${trikeId}">Status do Pagamento:</label>
+          <select id="paymentStatus-${trikeId}" class="border rounded px-3 py-2 w-full">
+            <option value="pago">Pago</option>
+            <option value="nao_pago">Não Pago</option>
+          </select>
+        </div>
+
+        <div class="bg-gray-100 p-3 rounded">
+          <p>Valor: R$ <span id="currentValue-${trikeId}">0.00</span></p>
+          <p>Desconto: R$ <span id="currentDiscount-${trikeId}">0.00</span></p>
+          <p><strong>Valor Final: R$ <span id="finalValue-${trikeId}">0.00</span></strong></p>
+          <p>Status: <span id="currentPaymentStatus-${trikeId}">Não Pago</span></p>
+        </div>
+      `;
+
+      trikesContainer.appendChild(container);
+
+      // Eventos dos botões
+      container.querySelector(`#btn10min-${trikeId}`).addEventListener('click', () => startCountdown(trikeId, 10));
+      container.querySelector(`#btn20min-${trikeId}`).addEventListener('click', () => startCountdown(trikeId, 20));
+      container.querySelector(`#startTimer-${trikeId}`).addEventListener('click', () => {
+        const customTime = parseInt(container.querySelector(`#customTime-${trikeId}`).value);
+        if (!isNaN(customTime) && customTime > 0) {
+          startCountdown(trikeId, customTime);
+        } else {
+          alert('Por favor, informe um tempo válido!');
+        }
+      });
+      container.querySelector(`#pauseTimer-${trikeId}`).addEventListener('click', () => pauseTimer(trikeId));
+      container.querySelector(`#resumeTimer-${trikeId}`).addEventListener('click', () => resumeTimer(trikeId));
+      container.querySelector(`#resetTimer-${trikeId}`).addEventListener('click', () => resetTimer(trikeId));
+      container.querySelector(`#discount-${trikeId}`).addEventListener('input', () => {
+        const currentMinutes = trikes[trikeId - 1].timeLeft / 60;
+        updateValuesUI(trikeId, currentMinutes);
+      });
+      container.querySelector(`#paymentStatus-${trikeId}`).addEventListener('change', () => {
+        const currentMinutes = trikes[trikeId - 1].timeLeft / 60;
+        updateValuesUI(trikeId, currentMinutes);
+      });
+    }
+
+    function updateTimerDisplay(trikeId) {
+      const trike = trikes[trikeId - 1];
+      const timeRemaining = document.querySelector(`#timeRemaining-${trikeId}`);
+      if (timeRemaining) {
+        timeRemaining.textContent = formatTime(trike.timeLeft);
+      }
+    }
+
+    // Inicializa o app criando a UI e lendo dados do Firebase para sincronizar estado
+    function init() {
+      for (const trike of trikes) {
+        createTrikeUI(trike);
       }
 
-      for (let i = 1; i <= trikeCount; i++) {
-        createTrikeUI(i);
-      }
-    });
+      // Sincronizar estado com Firebase
+      database.ref('trikes').on('value', snapshot => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        for (const [key, value] of Object.entries(data)) {
+          const id = parseInt(key);
+          if (!id || id > trikes.length) continue;
+
+          const trike = trikes[id - 1];
+          trike.timeLeft = value.timeLeft || 0;
+          trike.isRunning = value.isRunning || false;
+          trike.isPaused = value.isPaused || false;
+          trike.value = value.value || 0;
+          trike.discount = value.discount || 0;
+          trike.finalValue = value.finalValue || 0;
+          trike.paymentStatus = value.paymentStatus || 'nao_pago';
+
+          updateTimerDisplay(id);
+          updateValuesUI(id, trike.timeLeft / 60);
+          updateTrikeUI(id);
+
+          if (trike.isRunning && !trike.timer) {
+            startTimerInterval(id);
+          }
+        }
+      });
+
+      updateReport();
+    }
+
+    init();
   </script>
 </body>
 </html>
