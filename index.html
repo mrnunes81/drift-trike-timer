@@ -1,9 +1,11 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Controle de Tempo - Drift Trikes</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle de Drift Trike - Temporizador</title>
+  <link rel="manifest" href="manifest.json">
   <style>
     body {
       font-family: sans-serif;
@@ -14,14 +16,11 @@
     h1 { text-align: center; }
     .trike {
       background: #fff;
-      border: 2px solid #28a745;
+      border: 1px solid #ccc;
       border-radius: 8px;
       padding: 10px;
       margin-bottom: 15px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .trike.in-use {
-      border-color: #dc3545;
     }
     .trike h2 {
       margin: 0 0 10px;
@@ -65,38 +64,16 @@
   <h1>Controle de Tempo - Drift Trikes</h1>
   <div id="trikes"></div>
   <div id="relatorio">
-    <button id="btnRelatorio">Gerar Relatório do Dia</button>
+    <button onclick="gerarRelatorio()">Gerar Relatório do Dia</button>
     <div id="resultadoRelatorio"></div>
   </div>
-
-  <audio id="alertSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto"></audio>
-
-  <!-- Firebase SDKs -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, onValue, set, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
-
-    // Firebase config (substitua pelos seus dados)
-    const firebaseConfig = {
-      apiKey: "AIzaSyDizfkzSJMXyY30M1hHTkxZ8PZjrMZtMmU",
-      authDomain: "drift-trike-timer.firebaseapp.com",
-      databaseURL: "https://drift-trike-timer-default-rtdb.firebaseio.com",
-      projectId: "drift-trike-timer",
-      storageBucket: "drift-trike-timer.appspot.com",
-      messagingSenderId: "904950542869",
-      appId: "1:904950542869:web:ec2d83299243aa6e82141c"
-    };
-
-    // Inicializa o Firebase
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
+  <audio id="alertSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"></audio>
+  <script>
     const trikeCount = 10;
     const trikesContainer = document.getElementById('trikes');
-    const alertSound = document.getElementById('alertSound');
-    let timers = Array(trikeCount).fill(null);
+    const faturamento = Array(trikeCount).fill(0);
+    const descontos = Array(trikeCount).fill(0);
 
-    // Cria a interface para cada trike
     function createTrike(index) {
       const container = document.createElement('div');
       container.className = 'trike';
@@ -108,41 +85,128 @@
       timeDisplay.className = 'time';
       timeDisplay.textContent = '00:00';
 
+      let timer = null;
+      let remainingTime = 0;
+      let totalTime = 0;
+      let emUso = false;
+
+      function updateDisplay() {
+        const minutes = Math.floor(remainingTime / 60);
+        const seconds = remainingTime % 60;
+        timeDisplay.textContent = \`\${String(minutes).padStart(2, '0')}:\${String(seconds).padStart(2, '0')}\`;
+      }
+
+      function startTimer() {
+        if (timer || remainingTime <= 0) return;
+        emUso = true;
+        updateStatus();
+        timer = setInterval(() => {
+          if (remainingTime > 0) {
+            remainingTime--;
+            updateDisplay();
+          } else {
+            clearInterval(timer);
+            timer = null;
+            emUso = false;
+            updateStatus();
+            document.getElementById('alertSound').play();
+            const valorTotal = ((totalTime / 60) / 10) * 20 - descontos[index];
+            faturamento[index] = Math.max(0, valorTotal);
+            alert(\`Tempo esgotado para o Trike \${index + 1}!\`);
+          }
+        }, 1000);
+      }
+
+      function stopTimer() {
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+      }
+
+      function resetTimer() {
+        stopTimer();
+        remainingTime = 0;
+        totalTime = 0;
+        emUso = false;
+        updateDisplay();
+        updateStatus();
+      }
+
+      function renewTimer() {
+        const renewMinutes = parseInt(personalInput.value || '0');
+        if (renewMinutes > 0) {
+          remainingTime += renewMinutes * 60;
+          totalTime += renewMinutes * 60;
+          updateDisplay();
+        }
+      }
+
+      function updateStatus() {
+        container.style.borderColor = emUso ? '#dc3545' : '#28a745';
+      }
+
       const controls = document.createElement('div');
       controls.className = 'controls';
 
-      // Botões de tempo pré-definido
-      [5, 10, 15].forEach(min => {
-        const btn = document.createElement('button');
-        btn.textContent = `${min} min`;
-        btn.className = 'gray';
-        btn.onclick = () => setTime(index, min * 60);
-        controls.appendChild(btn);
-      });
+      const fixedBtn = document.createElement('button');
+      fixedBtn.textContent = '10 min';
+      fixedBtn.className = 'gray';
+      fixedBtn.onclick = () => {
+        stopTimer();
+        remainingTime = 10 * 60;
+        totalTime = 10 * 60;
+        updateDisplay();
+      };
+      controls.appendChild(fixedBtn);
+
+      const personalInput = document.createElement('input');
+      personalInput.type = 'number';
+      personalInput.placeholder = 'Minutos';
+      personalInput.min = '1';
+      controls.appendChild(personalInput);
+
+      const renewBtn = document.createElement('button');
+      renewBtn.textContent = 'Renovar Tempo';
+      renewBtn.className = 'gray';
+      renewBtn.onclick = renewTimer;
+      controls.appendChild(renewBtn);
 
       const startBtn = document.createElement('button');
       startBtn.textContent = 'Iniciar';
       startBtn.className = 'green';
-      startBtn.onclick = () => startTimer(index);
+      startBtn.onclick = startTimer;
       controls.appendChild(startBtn);
 
       const pauseBtn = document.createElement('button');
       pauseBtn.textContent = 'Pausar';
       pauseBtn.className = 'gray';
-      pauseBtn.onclick = () => pauseTimer(index);
+      pauseBtn.onclick = stopTimer;
       controls.appendChild(pauseBtn);
 
       const resetBtn = document.createElement('button');
       resetBtn.textContent = 'Resetar';
       resetBtn.className = 'gray';
-      resetBtn.onclick = () => resetTimer(index);
+      resetBtn.onclick = resetTimer;
       controls.appendChild(resetBtn);
 
       const statusDiv = document.createElement('div');
       statusDiv.className = 'status';
 
+      const descontoInput = document.createElement('input');
+      descontoInput.type = 'number';
+      descontoInput.placeholder = 'Desconto (R$)';
+      descontoInput.min = '0';
+      descontoInput.className = 'pago-info';
+      descontoInput.addEventListener('input', () => {
+        descontos[index] = parseFloat(descontoInput.value || '0');
+      });
+
       const pagoSelect = document.createElement('select');
-      pagoSelect.innerHTML = `<option value="nao">Não Pago</option><option value="sim">Pago</option>`;
+      const optionNao = new Option('Não Pago', 'nao');
+      const optionSim = new Option('Pago', 'sim');
+      pagoSelect.add(optionNao);
+      pagoSelect.add(optionSim);
 
       const valorInput = document.createElement('input');
       valorInput.type = 'number';
@@ -152,138 +216,29 @@
 
       statusDiv.appendChild(pagoSelect);
       statusDiv.appendChild(valorInput);
+      statusDiv.appendChild(descontoInput);
 
       container.appendChild(title);
       container.appendChild(timeDisplay);
       container.appendChild(controls);
       container.appendChild(statusDiv);
       trikesContainer.appendChild(container);
-
-      // Monitorar mudanças e salvar no Firebase
-      pagoSelect.addEventListener('change', () => {
-        updateTrikeData(index, { pago: pagoSelect.value });
-      });
-      valorInput.addEventListener('change', () => {
-        const val = parseFloat(valorInput.value) || 0;
-        updateTrikeData(index, { valor: val });
-      });
-
-      return {
-        container,
-        timeDisplay,
-        pagoSelect,
-        valorInput
-      };
     }
 
-    // Atualiza a interface e dados do trike
-    function updateUI(index, data) {
-      const { container, timeDisplay, pagoSelect, valorInput } = trikeElements[index];
-      const emUso = data.emUso || false;
-      const tempoRestante = data.tempoRestante || 0;
-      const pago = data.pago || 'nao';
-      const valor = data.valor || 0;
-
-      // Atualiza display de tempo
-      const minutes = Math.floor(tempoRestante / 60);
-      const seconds = tempoRestante % 60;
-      timeDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-
-      // Atualiza status visual
-      container.classList.toggle('in-use', emUso);
-
-      // Atualiza select e input (sem disparar eventos)
-      pagoSelect.value = pago;
-      valorInput.value = valor;
-
-      // Controla timer local
-      if (timers[index]) {
-        clearInterval(timers[index]);
-        timers[index] = null;
-      }
-      if (emUso && tempoRestante > 0) {
-        timers[index] = setInterval(() => {
-          decrementTime(index);
-        }, 1000);
-      }
+    function gerarRelatorio() {
+      const total = faturamento.reduce((sum, val) => sum + val, 0);
+      document.getElementById('resultadoRelatorio').textContent = \`Total Faturado: R$ \${total.toFixed(2)}\`;
     }
 
-    // Decrementa o tempo e atualiza Firebase
-    function decrementTime(index) {
-      const trikeRef = ref(db, `trikes/${index}`);
-      onValue(trikeRef, (snapshot) => {
-        let data = snapshot.val();
-        if (!data) data = {};
-        if (data.tempoRestante > 0) {
-          const novoTempo = data.tempoRestante - 1;
-          const emUso = novoTempo > 0;
-          if (novoTempo === 0) {
-            alertSound.play();
-            alert(`Tempo esgotado para o Trike ${index + 1}!`);
-          }
-          set(trikeRef, {...data, tempoRestante: novoTempo, emUso});
-        } else {
-          clearInterval(timers[index]);
-          timers[index] = null;
-          set(trikeRef, {...data, emUso: false});
-        }
-      }, { onlyOnce: true });
-    }
-
-    // Configura o tempo e para o timer
-    function setTime(index, segundos) {
-      updateTrikeData(index, { tempoRestante: segundos, emUso: false });
-    }
-    // Inicia o timer
-    function startTimer(index) {
-      updateTrikeData(index, { emUso: true });
-    }
-    // Pausa o timer
-    function pauseTimer(index) {
-      updateTrikeData(index, { emUso: false });
-    }
-    // Reseta o timer
-    function resetTimer(index) {
-      updateTrikeData(index, { tempoRestante: 0, emUso: false });
-    }
-
-    // Atualiza os dados do trike no Firebase
-    function updateTrikeData(index, data) {
-      const trikeRef = ref(db, `trikes/${index}`);
-      update(trikeRef, data);
-    }
-
-    // Elementos do DOM de cada trike
-    const trikeElements = [];
     for (let i = 0; i < trikeCount; i++) {
-      trikeElements.push(createTrike(i));
+      createTrike(i);
     }
 
-    // Escuta alterações no Firebase e atualiza UI
-    for (let i = 0; i < trikeCount; i++) {
-      const trikeRef = ref(db, `trikes/${i}`);
-      onValue(trikeRef, (snapshot) => {
-        const data = snapshot.val() || {};
-        updateUI(i, data);
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js');
       });
     }
-
-    // Relatório diário (simples, soma dos valores pagos)
-    document.getElementById('btnRelatorio').addEventListener('click', async () => {
-      const dbRef = ref(db, 'trikes');
-      let total = 0;
-      // Busca dados dos 10 trikes
-      for (let i = 0; i < trikeCount; i++) {
-        const snapshot = await new Promise((res) => {
-          onValue(ref(db, `trikes/${i}`), snap => {
-            res(snap);
-          }, {onlyOnce: true});
-        });
-        const data = snapshot.val() || {};
-        if (data.pago === 'sim' && data.valor) total += Number(data.valor);
-      }
-      document.getElementById('resultadoRelatorio').textContent = `Total Faturado: R$ ${total.toFixed(2)}`;
-    });
   </script>
 </body>
 </html>
