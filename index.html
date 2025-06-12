@@ -1,244 +1,40 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Controle de Drift Trike - Temporizador</title>
-  <link rel="manifest" href="manifest.json">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Drift Trike Timer com Firebase</title>
+  <link rel="manifest" href="manifest.json" />
   <style>
-    body {
-      font-family: sans-serif;
-      background: #f2f2f2;
-      margin: 0;
-      padding: 20px;
-    }
+    body { font-family: sans-serif; background: #f2f2f2; margin: 0; padding: 20px; }
     h1 { text-align: center; }
     .trike {
       background: #fff;
-      border: 1px solid #ccc;
+      border: 3px solid #28a745;
       border-radius: 8px;
       padding: 10px;
       margin-bottom: 15px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      transition: border-color 0.3s;
     }
-    .trike h2 {
-      margin: 0 0 10px;
-    }
-    .controls {
-      display: flex;
-      gap: 5px;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-    button {
-      padding: 8px 12px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .time {
-      font-size: 1.5em;
-      font-weight: bold;
-      margin: 10px 0;
-    }
-    .status {
-      margin-top: 10px;
-    }
-    .pago-info {
-      margin-top: 5px;
-    }
-    .green { background: #28a745; color: white; }
-    .red { background: #dc3545; color: white; }
-    .gray { background: #6c757d; color: white; }
-    #relatorio {
-      margin-top: 20px;
-      padding: 10px;
-      background: #fff;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-    }
+    .trike.em-uso { border-color: #dc3545; }
+    .controls { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    button { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; background: #6c757d; color: white; }
+    button.green { background: #28a745; }
+    button.red { background: #dc3545; }
+    input, select { padding: 6px; border-radius: 5px; border: 1px solid #ccc; font-size: 1em; margin-right: 5px; }
+    .time { font-size: 1.5em; font-weight: bold; text-align: center; margin: 10px 0; min-width: 80px; }
+    .status { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    #relatorio { margin-top: 20px; padding: 10px; background: #fff; border: 1px solid #ccc; border-radius: 8px; text-align: center; }
   </style>
 </head>
 <body>
-  <h1>Controle de Tempo - Drift Trikes</h1>
+  <h1>Drift Trike Timer</h1>
   <div id="trikes"></div>
   <div id="relatorio">
     <button onclick="gerarRelatorio()">Gerar Relatório do Dia</button>
-    <div id="resultadoRelatorio"></div>
+    <div id="resultadoRelatorio" style="font-weight:bold; margin-top: 10px;"></div>
   </div>
-  <audio id="alertSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"></audio>
-  <script>
-    const trikeCount = 10;
-    const trikesContainer = document.getElementById('trikes');
-    const faturamento = Array(trikeCount).fill(0);
-    const descontos = Array(trikeCount).fill(0);
-
-    function createTrike(index) {
-      const container = document.createElement('div');
-      container.className = 'trike';
-
-      const title = document.createElement('h2');
-      title.textContent = `Trike ${index + 1}`;
-
-      const timeDisplay = document.createElement('div');
-      timeDisplay.className = 'time';
-      timeDisplay.textContent = '00:00';
-
-      let timer = null;
-      let remainingTime = 0;
-      let totalTime = 0;
-      let emUso = false;
-
-   function updateDisplay() {
-  const minutes = Math.floor(remainingTime / 60);
-  const seconds = remainingTime % 60;
-  timeDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-      function startTimer() {
-        if (timer || remainingTime <= 0) return;
-        emUso = true;
-        updateStatus();
-        timer = setInterval(() => {
-          if (remainingTime > 0) {
-            remainingTime--;
-            updateDisplay();
-          } else {
-            clearInterval(timer);
-            timer = null;
-            emUso = false;
-            updateStatus();
-            document.getElementById('alertSound').play();
-            const valorTotal = ((totalTime / 60) / 10) * 20 - descontos[index];
-            faturamento[index] = Math.max(0, valorTotal);
-            alert(\`Tempo esgotado para o Trike \${index + 1}!\`);
-          }
-        }, 1000);
-      }
-
-      function stopTimer() {
-        if (timer) {
-          clearInterval(timer);
-          timer = null;
-        }
-      }
-
-      function resetTimer() {
-        stopTimer();
-        remainingTime = 0;
-        totalTime = 0;
-        emUso = false;
-        updateDisplay();
-        updateStatus();
-      }
-
-      function renewTimer() {
-        const renewMinutes = parseInt(personalInput.value || '0');
-        if (renewMinutes > 0) {
-          remainingTime += renewMinutes * 60;
-          totalTime += renewMinutes * 60;
-          updateDisplay();
-        }
-      }
-
-      function updateStatus() {
-        container.style.borderColor = emUso ? '#dc3545' : '#28a745';
-      }
-
-      const controls = document.createElement('div');
-      controls.className = 'controls';
-
-      const fixedBtn = document.createElement('button');
-      fixedBtn.textContent = '10 min';
-      fixedBtn.className = 'gray';
-      fixedBtn.onclick = () => {
-        stopTimer();
-        remainingTime = 10 * 60;
-        totalTime = 10 * 60;
-        updateDisplay();
-      };
-      controls.appendChild(fixedBtn);
-
-      const personalInput = document.createElement('input');
-      personalInput.type = 'number';
-      personalInput.placeholder = 'Minutos';
-      personalInput.min = '1';
-      controls.appendChild(personalInput);
-
-      const renewBtn = document.createElement('button');
-      renewBtn.textContent = 'Renovar Tempo';
-      renewBtn.className = 'gray';
-      renewBtn.onclick = renewTimer;
-      controls.appendChild(renewBtn);
-
-      const startBtn = document.createElement('button');
-      startBtn.textContent = 'Iniciar';
-      startBtn.className = 'green';
-      startBtn.onclick = startTimer;
-      controls.appendChild(startBtn);
-
-      const pauseBtn = document.createElement('button');
-      pauseBtn.textContent = 'Pausar';
-      pauseBtn.className = 'gray';
-      pauseBtn.onclick = stopTimer;
-      controls.appendChild(pauseBtn);
-
-      const resetBtn = document.createElement('button');
-      resetBtn.textContent = 'Resetar';
-      resetBtn.className = 'gray';
-      resetBtn.onclick = resetTimer;
-      controls.appendChild(resetBtn);
-
-      const statusDiv = document.createElement('div');
-      statusDiv.className = 'status';
-
-      const descontoInput = document.createElement('input');
-      descontoInput.type = 'number';
-      descontoInput.placeholder = 'Desconto (R$)';
-      descontoInput.min = '0';
-      descontoInput.className = 'pago-info';
-      descontoInput.addEventListener('input', () => {
-        descontos[index] = parseFloat(descontoInput.value || '0');
-      });
-
-      const pagoSelect = document.createElement('select');
-      const optionNao = new Option('Não Pago', 'nao');
-      const optionSim = new Option('Pago', 'sim');
-      pagoSelect.add(optionNao);
-      pagoSelect.add(optionSim);
-
-      const valorInput = document.createElement('input');
-      valorInput.type = 'number';
-      valorInput.placeholder = 'Valor (R$)';
-      valorInput.min = '0';
-      valorInput.className = 'pago-info';
-
-      statusDiv.appendChild(pagoSelect);
-      statusDiv.appendChild(valorInput);
-      statusDiv.appendChild(descontoInput);
-
-      container.appendChild(title);
-      container.appendChild(timeDisplay);
-      container.appendChild(controls);
-      container.appendChild(statusDiv);
-      trikesContainer.appendChild(container);
-    }
-
-    function gerarRelatorio() {
-      const total = faturamento.reduce((sum, val) => sum + val, 0);
-      document.getElementById('resultadoRelatorio').textContent = \`Total Faturado: R$ \${total.toFixed(2)}\`;
-    }
-
-    for (let i = 0; i < trikeCount; i++) {
-      createTrike(i);
-    }
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js');
-      });
-    }
-  </script>
+  <audio id="alertSound" src="alerta.ogg"></audio>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -1,13 +1,9 @@
 {
   "name": "Drift Trike Timer",
-  "short_name": "Trike Timer",
+  "short_name": "TrikeTimer",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#28a745",
-  "icons": [{
-    "src": "icon.png",
-    "type": "image/png",
-    "sizes": "512x512"
-  }]
+  "icons": []
 }
