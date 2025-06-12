@@ -1,20 +1,13 @@
 {
-  "name": "Controle Drift Trike",
-  "short_name": "DriftTrike",
+  "name": "Drift Trike Timer",
+  "short_name": "Trike Timer",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#f2f2f2",
+  "background_color": "#ffffff",
   "theme_color": "#28a745",
-  "icons": [
-    {
-      "src": "icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
-  ]
+  "icons": [{
+    "src": "icon.png",
+    "type": "image/png",
+    "sizes": "512x512"
+  }]
 }
