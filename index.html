@@ -35,6 +35,138 @@
     <div id="resultadoRelatorio" style="font-weight:bold; margin-top: 10px;"></div>
   </div>
   <audio id="alertSound" src="alerta.ogg"></audio>
-  <script type="module" src="app.js"></script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.1/firebase-app.js";
+    import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.6.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDizfkzSJMXyY30M1hHTkxZ8PZjrMZtMmU",
+      authDomain: "drift-trike-timer.firebaseapp.com",
+      databaseURL: "https://drift-trike-timer-default-rtdb.firebaseio.com",
+      projectId: "drift-trike-timer",
+      storageBucket: "drift-trike-timer.appspot.com",
+      messagingSenderId: "904950542869",
+      appId: "1:904950542869:web:ec2d83299243aa6e82141c"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const trikeCount = 10;
+    const trikesContainer = document.getElementById("trikes");
+    const faturamento = Array(trikeCount).fill(0);
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60), s = sec % 60;
+      return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+    }
+
+    function createTrike(i) {
+      const container = document.createElement("div");
+      container.className = "trike";
+      const title = document.createElement("h2"); title.textContent = `Trike ${i+1}`;
+      const timeDisplay = document.createElement("div"); timeDisplay.className = "time"; timeDisplay.textContent = "00:00";
+      const ctr = document.createElement("div"); ctr.className = "controls";
+      const btn10 = document.createElement("button"); btn10.textContent = "10 min"; btn10.className = "gray";
+      const btn20 = document.createElement("button"); btn20.textContent = "20 min"; btn20.className = "gray";
+      const inputMin = document.createElement("input"); inputMin.type = "number"; inputMin.placeholder = "Minutos"; inputMin.min = "1";
+      const btnRen = document.createElement("button"); btnRen.textContent = "Renovar Tempo"; btnRen.className = "gray";
+      const btnStart = document.createElement("button"); btnStart.textContent = "Iniciar"; btnStart.className = "green";
+      const btnPause = document.createElement("button"); btnPause.textContent = "Pausar"; btnPause.className = "gray";
+      const btnReset = document.createElement("button"); btnReset.textContent = "Resetar"; btnReset.className = "gray";
+      ctr.append(btn10, btn20, inputMin, btnRen, btnStart, btnPause, btnReset);
+
+      const st = document.createElement("div"); st.className = "status";
+      const pago = document.createElement("select");
+      pago.add(new Option("Não Pago","nao"));
+      pago.add(new Option("Pago","sim"));
+      const valor = document.createElement("input"); valor.type="number"; valor.placeholder="Valor (R$)"; valor.min="0"; valor.step="0.01";
+      const desconto = document.createElement("input"); desconto.type="number"; desconto.placeholder="Desconto (R$)"; desconto.min="0"; desconto.step="0.01";
+      st.append(pago, valor, desconto);
+
+      container.append(title, timeDisplay, ctr, st);
+      trikesContainer.append(container);
+
+      let remaining=0, total=0, timer=null, inUse=false;
+      const dbref = ref(db, `trikes/trike${i}`);
+
+      function syncState(data){
+        remaining = data.remaining || 0;
+        total = data.total || data.remaining || 0;
+        inUse = data.inUse || false;
+        pago.value = data.pago||"nao";
+        valor.value = data.valor || "";
+        desconto.value = data.desconto || 0;
+        timeDisplay.textContent = formatTime(remaining);
+        container.classList.toggle("em-uso", inUse);
+        if(inUse && !timer) startTimer();
+        if(!inUse && timer) stopTimer();
+      }
+
+      onValue(dbref, snap => { const d=snap.val(); if(d) syncState(d); });
+
+      function saveState(){
+        set(dbref, {
+          remaining, total, inUse,
+          pago: pago.value,
+          valor: parseFloat(valor.value)||0,
+          desconto: parseFloat(desconto.value)||0
+        });
+      }
+
+      function startTimer(){
+        if(timer||remaining<=0) return;
+        inUse=true; container.classList.add("em-uso"); saveState();
+        timer = setInterval(()=>{
+          if(remaining>0){
+            remaining--; total--;
+            timeDisplay.textContent = formatTime(remaining);
+            saveState();
+          } else {
+            stopTimer();
+            const gross=(total/600)*20;
+            faturamento[i]=Math.max(0, gross - parseFloat(desconto.value));
+            document.getElementById("alertSound").play();
+            alert(`Fim do tempo Trike ${i+1}! Valor: R$${faturamento[i].toFixed(2)}`);
+          }
+        },1000);
+      }
+
+      function stopTimer(){
+        clearInterval(timer); timer=null; inUse=false; container.classList.remove("em-uso"); saveState();
+      }
+
+      function resetTimer(){
+        stopTimer(); remaining=0; total=0; faturamento[i]=0; timeDisplay.textContent="00:00"; saveState();
+      }
+
+      function setFixed(m){
+        stopTimer(); remaining=m*60; total=m*60; timeDisplay.textContent=formatTime(remaining); saveState();
+      }
+
+      btn10.onclick = ()=>setFixed(10);
+      btn20.onclick = ()=>setFixed(20);
+      btnRen.onclick = ()=>{ const m=parseInt(inputMin.value)||0; if(m>0){remaining+=m*60; total+=m*60; saveState();} };
+      btnStart.onclick = startTimer;
+      btnPause.onclick = stopTimer;
+      btnReset.onclick = resetTimer;
+      pago.onchange = valor.oninput = desconto.oninput = saveState;
+    }
+
+    function gerarRelatorio(){
+      const dbref = ref(db, "trikes");
+      get(dbref).then(snap=>{
+        if(!snap.exists()){document.getElementById("resultadoRelatorio").textContent="Nenhum dado"; return;}
+        let total=0;
+        Object.values(snap.val()).forEach(t=>{
+          const v=parseFloat(t.valor)||0, d=parseFloat(t.desconto)||0;
+          total+=Math.max(0,v-d);
+        });
+        document.getElementById("resultadoRelatorio").textContent=`Total Faturado: R$ ${total.toFixed(2)}`;
+      });
+    }
+
+    for(let i=0;i<trikeCount;i++)createTrike(i);
+  </script>
 </body>
 </html>
