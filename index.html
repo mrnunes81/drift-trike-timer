@@ -1,296 +1,103 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gerenciador de Drift Trikes</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
-  <!-- Firebase SDK v8 -->
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <link href="./src/output.css" rel="stylesheet">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
-<body class="bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 font-sans min-h-screen flex flex-col items-center p-6">
-  <div class="container max-w-3xl bg-white rounded-lg shadow-lg p-6 w-full">
-    <h1 class="text-3xl font-extrabold text-center mb-8 text-gray-900">Gerenciador de Drift Trikes</h1>
-
-    <div id="trikesContainer" class="space-y-6"></div>
-
-    <div class="bg-gray-100 p-6 rounded-lg shadow-md mt-8">
-      <h2 class="text-xl font-semibold mb-4 text-gray-800">Relatório do Dia</h2>
-      <p>Total de Sessões: <span id="totalSessions" class="font-bold">0</span></p>
-      <p>Valor Total: R$ <span id="totalValue" class="font-bold">0.00</span></p>
-      <p>Desconto Total: R$ <span id="totalDiscount" class="font-bold">0.00</span></p>
-      <p>Valor Final: R$ <span id="finalTotalValue" class="font-bold">0.00</span></p>
-    </div>
+<body class="bg-gray-100 font-sans">
+  <div class="container mx-auto p-4 max-w-2xl">
+    <h1 class="text-2xl font-bold text-center mb-4">Gerenciador de Drift Trikes</h1>
+    <div id="trikesContainer" class="space-y-4"></div>
   </div>
-
   <script>
-    // Configuração do Firebase (use sua config!)
-    const firebaseConfig = {
-      apiKey: "AIzaSyDizfkzSJMXyY30M1hHTkxZ8PZjrMZtMmU",
-      authDomain: "drift-trike-timer.firebaseapp.com",
-      databaseURL: "https://drift-trike-timer-default-rtdb.firebaseio.com",
-      projectId: "drift-trike-timer",
-      storageBucket: "drift-trike-timer.firebasestorage.app",
-      messagingSenderId: "904950542869",
-      appId: "1:904950542869:web:ec2d83299243aa6e82141c"
-    };
+    window.addEventListener('DOMContentLoaded', () => {
+      const firebaseConfig = {
+        apiKey: "AIzaSyDizfkzSJMXyY30M1hHTkxZ8PZjrMZtMmU",
+        authDomain: "drift-trike-timer.firebaseapp.com",
+        databaseURL: "https://drift-trike-timer-default-rtdb.firebaseio.com",
+        projectId: "drift-trike-timer",
+        storageBucket: "drift-trike-timer.appspot.com",
+        messagingSenderId: "904950542869",
+        appId: "1:904950542869:web:ec2d83299243aa6e82141c"
+      };
 
-    firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
 
-    const RATE_PER_10_MIN = 20;
-    const trikes = Array.from({ length: 10 }, (_, i) => ({
-      id: i + 1,
-      timer: null,
-      timeLeft: 0,
-      isRunning: false
-    }));
+      const trikeCount = 10;
 
-    const totalSessions = document.getElementById('totalSessions');
-    const totalValue = document.getElementById('totalValue');
-    const totalDiscount = document.getElementById('totalDiscount');
-    const finalTotalValue = document.getElementById('finalTotalValue');
-    const trikesContainer = document.getElementById('trikesContainer');
+      function formatTime(sec) {
+        const m = String(Math.floor(sec / 60)).padStart(2, '0');
+        const s = String(sec % 60).padStart(2, '0');
+        return `${m}:${s}`;
+      }
 
-    function updateReport() {
-      database.ref('sessions').once('value', snapshot => {
-        const sessions = snapshot.val() ? Object.values(snapshot.val()) : [];
-        const total = sessions.reduce((sum, s) => sum + s.value, 0);
-        const totalDisc = sessions.reduce((sum, s) => sum + s.discount, 0);
-        totalSessions.textContent = sessions.length;
-        totalValue.textContent = total.toFixed(2);
-        totalDiscount.textContent = totalDisc.toFixed(2);
-        finalTotalValue.textContent = (total - totalDisc).toFixed(2);
-      });
-    }
-
-    function calculateValue(minutes) {
-      return (minutes / 10) * RATE_PER_10_MIN;
-    }
-
-    function formatTime(seconds) {
-      const min = Math.floor(seconds / 60);
-      const sec = seconds % 60;
-      return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-    }
-
-    function playAlert() {
-      const audio = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
-      audio.play();
-      alert('Tempo esgotado!');
-    }
-
-    function updateTrikeUI(trikeId) {
-      const trike = trikes[trikeId - 1];
-      const trikeElement = document.getElementById(`trike-${trikeId}`);
-      const btn10min = trikeElement.querySelector(`#btn10min-${trikeId}`);
-      const btn20min = trikeElement.querySelector(`#btn20min-${trikeId}`);
-      const startBtn = trikeElement.querySelector(`#startTimer-${trikeId}`);
-      const renewBtn = trikeElement.querySelector(`#renewTimer-${trikeId}`);
-      const timerStatus = trikeElement.querySelector(`#timerStatus-${trikeId}`);
-
-      const classBase = trike.isRunning ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600';
-      btn10min.className = `flex-1 ${classBase} text-white py-2 rounded`;
-      btn20min.className = `flex-1 ${classBase} text-white py-2 rounded`;
-      startBtn.textContent = trike.isRunning ? 'Em Uso' : 'Iniciar';
-      startBtn.disabled = trike.isRunning;
-      renewBtn.classList.toggle('hidden', !trike.isRunning);
-      timerStatus.classList.toggle('hidden', !trike.isRunning);
-    }
-
-    function startCountdown(trikeId, minutes) {
-      const trike = trikes[trikeId - 1];
-      if (trike.timer) clearInterval(trike.timer);
-      trike.timeLeft = minutes * 60;
-      trike.isRunning = true;
-
-      const trikeElement = document.getElementById(`trike-${trikeId}`);
-      const discountInput = trikeElement.querySelector(`#discount-${trikeId}`);
-      const paymentStatus = trikeElement.querySelector(`#paymentStatus-${trikeId}`);
-      const timeRemaining = trikeElement.querySelector(`#timeRemaining-${trikeId}`);
-      const currentValue = trikeElement.querySelector(`#currentValue-${trikeId}`);
-      const currentDiscount = trikeElement.querySelector(`#currentDiscount-${trikeId}`);
-      const finalValue = trikeElement.querySelector(`#finalValue-${trikeId}`);
-      const currentPaymentStatus = trikeElement.querySelector(`#currentPaymentStatus-${trikeId}`);
-
-      const value = calculateValue(minutes);
-      const discount = parseFloat(discountInput.value) || 0;
-      const final = value - discount;
-
-      currentValue.textContent = value.toFixed(2);
-      currentDiscount.textContent = discount.toFixed(2);
-      finalValue.textContent = final.toFixed(2);
-      currentPaymentStatus.textContent = paymentStatus.value === 'pago' ? 'Pago' : 'Não Pago';
-
-      database.ref(`trikes/${trikeId}`).set({
-        timeLeft: trike.timeLeft,
-        isRunning: true,
-        value,
-        discount,
-        finalValue: final,
-        paymentStatus: paymentStatus.value
-      });
-
-      trike.timer = setInterval(() => {
-        trike.timeLeft--;
-        timeRemaining.textContent = formatTime(trike.timeLeft);
-        database.ref(`trikes/${trikeId}/timeLeft`).set(trike.timeLeft);
-
-        if (trike.timeLeft <= 0) {
-          clearInterval(trike.timer);
-          trike.isRunning = false;
-          playAlert();
-          database.ref(`trikes/${trikeId}`).set({
-            timeLeft: 0,
-            isRunning: false,
-            value,
-            discount,
-            finalValue: final,
-            paymentStatus: paymentStatus.value
-          });
-          // Salvar sessão no relatório
-          const newSessionKey = database.ref('sessions').push().key;
-          database.ref(`sessions/${newSessionKey}`).set({
-            trikeId,
-            minutes,
-            value,
-            discount,
-            finalValue: final,
-            paymentStatus: paymentStatus.value,
-            timestamp: Date.now()
-          });
-          updateReport();
-          updateTrikeUI(trikeId);
-        }
-      }, 1000);
-
-      updateTrikeUI(trikeId);
-    }
-
-    function createTrikeUI(trikeId) {
-      const div = document.createElement('div');
-      div.id = `trike-${trikeId}`;
-      div.className = 'bg-gray-50 p-5 rounded-lg shadow-md';
-      div.innerHTML = `
-        <h3 class="text-xl font-semibold mb-3 text-gray-800">Drift Trike ${trikeId}</h3>
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Selecionar Tempo</label>
-          <div class="flex space-x-3">
-            <button id="btn10min-${trikeId}" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded">10 Min</button>
-            <button id="btn20min-${trikeId}" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded">20 Min</button>
+      function createTrikeUI(id) {
+        const div = document.createElement('div');
+        div.id = `trike-${id}`;
+        div.className = 'bg-white p-4 rounded shadow';
+        div.innerHTML = `
+          <h2 class="text-lg font-semibold mb-2">Trike ${id}</h2>
+          <div class="flex items-center gap-2">
+            <input id="input-${id}" type="number" min="1" placeholder="Minutos" class="border rounded p-1 w-24">
+            <button id="start-${id}" class="bg-blue-500 text-white px-2 py-1 rounded">Iniciar</button>
+            <button id="pause-${id}" class="bg-yellow-500 text-white px-2 py-1 rounded">Pausar</button>
+            <button id="reset-${id}" class="bg-red-500 text-white px-2 py-1 rounded">Reset</button>
           </div>
-          <input id="customTime-${trikeId}" type="number" min="1" placeholder="Tempo personalizado (min)" class="mt-3 w-full border border-gray-300 rounded p-2 text-sm" />
-        </div>
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Desconto (R$)</label>
-          <input id="discount-${trikeId}" type="number" min="0" step="0.01" placeholder="0.00" class="w-full border border-gray-300 rounded p-2 text-sm" />
-        </div>
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Status de Pagamento</label>
-          <select id="paymentStatus-${trikeId}" class="w-full border border-gray-300 rounded p-2 text-sm">
-            <option value="pago">Pago</option>
-            <option value="nao_pago">Não Pago</option>
-          </select>
-        </div>
-        <button id="startTimer-${trikeId}" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded transition">Iniciar</button>
-        <button id="renewTimer-${trikeId}" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 rounded mt-3 hidden transition">Renovar Tempo</button>
-        <div id="timerStatus-${trikeId}" class="hidden mt-5 text-gray-700">
-          <p class="text-lg font-semibold">Tempo Restante: <span id="timeRemaining-${trikeId}">00:00</span></p>
-          <p>Valor: R$ <span id="currentValue-${trikeId}">0.00</span></p>
-          <p>Desconto: R$ <span id="currentDiscount-${trikeId}">0.00</span></p>
-          <p>Valor Final: R$ <span id="finalValue-${trikeId}">0.00</span></p>
-          <p>Status: <span id="currentPaymentStatus-${trikeId}">Não Pago</span></p>
-        </div>
-      `;
-      trikesContainer.appendChild(div);
+          <p class="mt-2">Tempo restante: <span id="display-${id}">00:00</span></p>
+        `;
+        document.getElementById('trikesContainer').appendChild(div);
 
-      // Eventos dos botões
-      const btn10min = div.querySelector(`#btn10min-${trikeId}`);
-      const btn20min = div.querySelector(`#btn20min-${trikeId}`);
-      const startBtn = div.querySelector(`#startTimer-${trikeId}`);
-      const renewBtn = div.querySelector(`#renewTimer-${trikeId}`);
-      const customTimeInput = div.querySelector(`#customTime-${trikeId}`);
-      const discountInput = div.querySelector(`#discount-${trikeId}`);
-      const paymentStatus = div.querySelector(`#paymentStatus-${trikeId}`);
+        let interval = null;
 
-      btn10min.addEventListener('click', () => {
-        startCountdown(trikeId, 10);
-      });
-
-      btn20min.addEventListener('click', () => {
-        startCountdown(trikeId, 20);
-      });
-
-      startBtn.addEventListener('click', () => {
-        let time = parseInt(customTimeInput.value);
-        if (isNaN(time) || time <= 0) {
-          alert('Informe um tempo válido!');
-          return;
-        }
-        startCountdown(trikeId, time);
-      });
-
-      renewBtn.addEventListener('click', () => {
-        if (trikes[trikeId - 1].isRunning) {
-          clearInterval(trikes[trikeId - 1].timer);
-          trikes[trikeId - 1].isRunning = false;
-          updateTrikeUI(trikeId);
-          database.ref(`trikes/${trikeId}`).update({ isRunning: false, timeLeft: 0 });
-        }
-      });
-
-      // Escutar alterações no Firebase para sincronizar estado
-      database.ref(`trikes/${trikeId}`).on('value', snapshot => {
-        const data = snapshot.val();
-        if (data) {
-          const trike = trikes[trikeId - 1];
-          trike.isRunning = data.isRunning;
-          trike.timeLeft = data.timeLeft || 0;
-
-          const timerStatus = div.querySelector(`#timerStatus-${trikeId}`);
-          const timeRemaining = div.querySelector(`#timeRemaining-${trikeId}`);
-          const currentValue = div.querySelector(`#currentValue-${trikeId}`);
-          const currentDiscount = div.querySelector(`#currentDiscount-${trikeId}`);
-          const finalValue = div.querySelector(`#finalValue-${trikeId}`);
-          const currentPaymentStatus = div.querySelector(`#currentPaymentStatus-${trikeId}`);
-
-          timeRemaining.textContent = formatTime(trike.timeLeft);
-          currentValue.textContent = data.value ? data.value.toFixed(2) : '0.00';
-          currentDiscount.textContent = data.discount ? data.discount.toFixed(2) : '0.00';
-          finalValue.textContent = data.finalValue ? data.finalValue.toFixed(2) : '0.00';
-          currentPaymentStatus.textContent = data.paymentStatus === 'pago' ? 'Pago' : 'Não Pago';
-
-          if (trike.isRunning && !trike.timer) {
-            // Criar o timer local
-            trike.timer = setInterval(() => {
-              trike.timeLeft--;
-              if (trike.timeLeft <= 0) {
-                clearInterval(trike.timer);
-                trike.isRunning = false;
-                playAlert();
-                updateTrikeUI(trikeId);
-              }
-              timeRemaining.textContent = formatTime(trike.timeLeft);
-              database.ref(`trikes/${trikeId}/timeLeft`).set(trike.timeLeft);
+        db.ref(`trikes/${id}`).on('value', snapshot => {
+          const data = snapshot.val();
+          if (!data) return;
+          document.getElementById(`display-${id}`).textContent = formatTime(data.timeLeft);
+          if (data.isRunning && !interval) {
+            interval = setInterval(() => {
+              db.ref(`trikes/${id}/timeLeft`).once('value').then(snap => {
+                let time = snap.val();
+                if (time > 0) {
+                  db.ref(`trikes/${id}`).update({ timeLeft: time - 1 });
+                } else {
+                  clearInterval(interval);
+                  interval = null;
+                  db.ref(`trikes/${id}`).update({ isRunning: false });
+                }
+              });
             }, 1000);
-          } else if (!trike.isRunning && trike.timer) {
-            clearInterval(trike.timer);
-            trike.timer = null;
-            timerStatus.classList.add('hidden');
+          } else if (!data.isRunning && interval) {
+            clearInterval(interval);
+            interval = null;
           }
+        });
 
-          updateTrikeUI(trikeId);
-        }
-      });
-    }
+        document.getElementById(`start-${id}`).addEventListener('click', () => {
+          const minutes = parseInt(document.getElementById(`input-${id}`).value);
+          if (!minutes || minutes <= 0) return;
+          db.ref(`trikes/${id}`).set({ timeLeft: minutes * 60, isRunning: true });
+        });
 
-    // Inicializa a UI
-    for (let i = 1; i <= 10; i++) {
-      createTrikeUI(i);
-    }
+        document.getElementById(`pause-${id}`).addEventListener('click', () => {
+          db.ref(`trikes/${id}/isRunning`).once('value').then(snapshot => {
+            db.ref(`trikes/${id}`).update({ isRunning: !snapshot.val() });
+          });
+        });
 
-    updateReport();
+        document.getElementById(`reset-${id}`).addEventListener('click', () => {
+          db.ref(`trikes/${id}`).set({ timeLeft: 0, isRunning: false });
+        });
+      }
+
+      for (let i = 1; i <= trikeCount; i++) {
+        createTrikeUI(i);
+      }
+    });
   </script>
 </body>
 </html>
