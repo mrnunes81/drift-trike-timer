@@ -2,10 +2,10 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Drift Trike - Temporizador</title>
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="manifest.json" />
   <style>
     body {
       font-family: sans-serif;
@@ -13,14 +13,16 @@
       margin: 0;
       padding: 20px;
     }
-    h1 { text-align: center; }
+    h1 {
+      text-align: center;
+    }
     .trike {
       background: #fff;
       border: 1px solid #ccc;
       border-radius: 8px;
       padding: 10px;
       margin-bottom: 15px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
     .trike h2 {
       margin: 0 0 10px;
@@ -48,9 +50,18 @@
     .pago-info {
       margin-top: 5px;
     }
-    .green { background: #28a745; color: white; }
-    .red { background: #dc3545; color: white; }
-    .gray { background: #6c757d; color: white; }
+    .green {
+      background: #28a745;
+      color: white;
+    }
+    .red {
+      background: #dc3545;
+      color: white;
+    }
+    .gray {
+      background: #6c757d;
+      color: white;
+    }
     #relatorio {
       margin-top: 20px;
       padding: 10px;
@@ -68,151 +79,128 @@
     <div id="resultadoRelatorio"></div>
   </div>
   <audio id="alertSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"></audio>
-  <script>
+
+  <!-- Firebase SDKs -->
+  <script type="module">
+    // Import Firebase
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.1/firebase-app.js";
+    import {
+      getDatabase,
+      ref,
+      onValue,
+      set,
+      update,
+      get,
+      child,
+      off
+    } from "https://www.gstatic.com/firebasejs/10.6.1/firebase-database.js";
+
+    // Firebase config (seu config)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDizfkzSJMXyY30M1hHTkxZ8PZjrMZtMmU",
+      authDomain: "drift-trike-timer.firebaseapp.com",
+      databaseURL: "https://drift-trike-timer-default-rtdb.firebaseio.com",
+      projectId: "drift-trike-timer",
+      storageBucket: "drift-trike-timer.firebasestorage.app",
+      messagingSenderId: "904950542869",
+      appId: "1:904950542869:web:ec2d83299243aa6e82141c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
     const trikeCount = 10;
-    const trikesContainer = document.getElementById('trikes');
+    const trikesContainer = document.getElementById("trikes");
     const faturamento = Array(trikeCount).fill(0);
-    const descontos = Array(trikeCount).fill(0);
 
+    // Função para formatar tempo em mm:ss
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+
+    // Criar cada trike com sincronização Firebase
     function createTrike(index) {
-      const container = document.createElement('div');
-      container.className = 'trike';
+      const container = document.createElement("div");
+      container.className = "trike";
 
-      const title = document.createElement('h2');
+      const title = document.createElement("h2");
       title.textContent = `Trike ${index + 1}`;
 
-      const timeDisplay = document.createElement('div');
-      timeDisplay.className = 'time';
-      timeDisplay.textContent = '00:00';
+      const timeDisplay = document.createElement("div");
+      timeDisplay.className = "time";
+      timeDisplay.textContent = "00:00";
 
       let timer = null;
-      let remainingTime = 0;
-      let totalTime = 0;
       let emUso = false;
 
-      function updateDisplay() {
-        const minutes = Math.floor(remainingTime / 60);
-        const seconds = remainingTime % 60;
-        timeDisplay.textContent = \`\${String(minutes).padStart(2, '0')}:\${String(seconds).padStart(2, '0')}\`;
-      }
+      // Controles
+      const controls = document.createElement("div");
+      controls.className = "controls";
 
-      function startTimer() {
-        if (timer || remainingTime <= 0) return;
-        emUso = true;
-        updateStatus();
-        timer = setInterval(() => {
-          if (remainingTime > 0) {
-            remainingTime--;
-            updateDisplay();
-          } else {
-            clearInterval(timer);
-            timer = null;
-            emUso = false;
-            updateStatus();
-            document.getElementById('alertSound').play();
-            const valorTotal = ((totalTime / 60) / 10) * 20 - descontos[index];
-            faturamento[index] = Math.max(0, valorTotal);
-            alert(\`Tempo esgotado para o Trike \${index + 1}!\`);
-          }
-        }, 1000);
-      }
+      // Botão fixo 10 min
+      const fixedBtn10 = document.createElement("button");
+      fixedBtn10.textContent = "10 min";
+      fixedBtn10.className = "gray";
+      controls.appendChild(fixedBtn10);
 
-      function stopTimer() {
-        if (timer) {
-          clearInterval(timer);
-          timer = null;
-        }
-      }
+      // Botão fixo 20 min
+      const fixedBtn20 = document.createElement("button");
+      fixedBtn20.textContent = "20 min";
+      fixedBtn20.className = "gray";
+      controls.appendChild(fixedBtn20);
 
-      function resetTimer() {
-        stopTimer();
-        remainingTime = 0;
-        totalTime = 0;
-        emUso = false;
-        updateDisplay();
-        updateStatus();
-      }
-
-      function renewTimer() {
-        const renewMinutes = parseInt(personalInput.value || '0');
-        if (renewMinutes > 0) {
-          remainingTime += renewMinutes * 60;
-          totalTime += renewMinutes * 60;
-          updateDisplay();
-        }
-      }
-
-      function updateStatus() {
-        container.style.borderColor = emUso ? '#dc3545' : '#28a745';
-      }
-
-      const controls = document.createElement('div');
-      controls.className = 'controls';
-
-      const fixedBtn = document.createElement('button');
-      fixedBtn.textContent = '10 min';
-      fixedBtn.className = 'gray';
-      fixedBtn.onclick = () => {
-        stopTimer();
-        remainingTime = 10 * 60;
-        totalTime = 10 * 60;
-        updateDisplay();
-      };
-      controls.appendChild(fixedBtn);
-
-      const personalInput = document.createElement('input');
-      personalInput.type = 'number';
-      personalInput.placeholder = 'Minutos';
-      personalInput.min = '1';
+      // Input personalizado
+      const personalInput = document.createElement("input");
+      personalInput.type = "number";
+      personalInput.placeholder = "Minutos";
+      personalInput.min = "1";
       controls.appendChild(personalInput);
 
-      const renewBtn = document.createElement('button');
-      renewBtn.textContent = 'Renovar Tempo';
-      renewBtn.className = 'gray';
-      renewBtn.onclick = renewTimer;
+      // Botão renovar tempo
+      const renewBtn = document.createElement("button");
+      renewBtn.textContent = "Renovar Tempo";
+      renewBtn.className = "gray";
       controls.appendChild(renewBtn);
 
-      const startBtn = document.createElement('button');
-      startBtn.textContent = 'Iniciar';
-      startBtn.className = 'green';
-      startBtn.onclick = startTimer;
+      // Botão iniciar
+      const startBtn = document.createElement("button");
+      startBtn.textContent = "Iniciar";
+      startBtn.className = "green";
       controls.appendChild(startBtn);
 
-      const pauseBtn = document.createElement('button');
-      pauseBtn.textContent = 'Pausar';
-      pauseBtn.className = 'gray';
-      pauseBtn.onclick = stopTimer;
+      // Botão pausar
+      const pauseBtn = document.createElement("button");
+      pauseBtn.textContent = "Pausar";
+      pauseBtn.className = "gray";
       controls.appendChild(pauseBtn);
 
-      const resetBtn = document.createElement('button');
-      resetBtn.textContent = 'Resetar';
-      resetBtn.className = 'gray';
-      resetBtn.onclick = resetTimer;
+      // Botão resetar
+      const resetBtn = document.createElement("button");
+      resetBtn.textContent = "Resetar";
+      resetBtn.className = "gray";
       controls.appendChild(resetBtn);
 
-      const statusDiv = document.createElement('div');
-      statusDiv.className = 'status';
+      // Status - pago, valor, desconto
+      const statusDiv = document.createElement("div");
+      statusDiv.className = "status";
 
-      const descontoInput = document.createElement('input');
-      descontoInput.type = 'number';
-      descontoInput.placeholder = 'Desconto (R$)';
-      descontoInput.min = '0';
-      descontoInput.className = 'pago-info';
-      descontoInput.addEventListener('input', () => {
-        descontos[index] = parseFloat(descontoInput.value || '0');
-      });
+      const pagoSelect = document.createElement("select");
+      pagoSelect.add(new Option("Não Pago", "nao"));
+      pagoSelect.add(new Option("Pago", "sim"));
 
-      const pagoSelect = document.createElement('select');
-      const optionNao = new Option('Não Pago', 'nao');
-      const optionSim = new Option('Pago', 'sim');
-      pagoSelect.add(optionNao);
-      pagoSelect.add(optionSim);
+      const valorInput = document.createElement("input");
+      valorInput.type = "number";
+      valorInput.placeholder = "Valor (R$)";
+      valorInput.min = "0";
+      valorInput.className = "pago-info";
 
-      const valorInput = document.createElement('input');
-      valorInput.type = 'number';
-      valorInput.placeholder = 'Valor (R$)';
-      valorInput.min = '0';
-      valorInput.className = 'pago-info';
+      const descontoInput = document.createElement("input");
+      descontoInput.type = "number";
+      descontoInput.placeholder = "Desconto (R$)";
+      descontoInput.min = "0";
+      descontoInput.className = "pago-info";
 
       statusDiv.appendChild(pagoSelect);
       statusDiv.appendChild(valorInput);
@@ -223,21 +211,159 @@
       container.appendChild(controls);
       container.appendChild(statusDiv);
       trikesContainer.appendChild(container);
+
+      // Variáveis de controle
+      let remainingTime = 0;
+      let totalTime = 0;
+
+      // Firebase DB referência para este trike
+      const trikeRef = ref(db, `trikes/trike${index}`);
+
+      // Atualizar display de tempo
+      function updateDisplay() {
+        timeDisplay.textContent = formatTime(remainingTime);
+      }
+
+      // Função para salvar estado no Firebase
+      function salvarEstadoFirebase() {
+        set(trikeRef, {
+          remainingTime,
+          totalTime,
+          emUso,
+          pago: pagoSelect.value,
+          valor: parseFloat(valorInput.value) || 0,
+          desconto: parseFloat(descontoInput.value) || 0,
+        });
+      }
+
+      // Iniciar timer local e salvar no Firebase
+      function startTimer() {
+        if (timer || remainingTime <= 0) return;
+        emUso = true;
+        salvarEstadoFirebase();
+        timer = setInterval(() => {
+          if (remainingTime > 0) {
+            remainingTime--;
+            updateDisplay();
+            salvarEstadoFirebase();
+          } else {
+            clearInterval(timer);
+            timer = null;
+            emUso = false;
+            updateDisplay();
+            salvarEstadoFirebase();
+            document.getElementById("alertSound").play();
+            alert(`Tempo esgotado para o Trike ${index + 1}!`);
+          }
+        }, 1000);
+      }
+
+      function pauseTimer() {
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+          emUso = false;
+          salvarEstadoFirebase();
+        }
+      }
+
+      function resetTimer() {
+        pauseTimer();
+        remainingTime = 0;
+        totalTime = 0;
+        emUso = false;
+        updateDisplay();
+        salvarEstadoFirebase();
+      }
+
+      function setFixedTime(minutos) {
+        pauseTimer();
+        remainingTime = minutos * 60;
+        totalTime = minutos * 60;
+        updateDisplay();
+        salvarEstadoFirebase();
+      }
+
+      function renewTime() {
+        const minRenew = parseInt(personalInput.value || "0");
+        if (minRenew > 0) {
+          remainingTime += minRenew * 60;
+          totalTime += minRenew * 60;
+          updateDisplay();
+          salvarEstadoFirebase();
+        }
+      }
+
+      // Eventos botões
+      fixedBtn10.onclick = () => setFixedTime(10);
+      fixedBtn20.onclick = () => setFixedTime(20);
+      renewBtn.onclick = renewTime;
+      startBtn.onclick = startTimer;
+      pauseBtn.onclick = pauseTimer;
+      resetBtn.onclick = resetTimer;
+
+      // Eventos inputs status para salvar no Firebase
+      pagoSelect.onchange = salvarEstadoFirebase;
+      valorInput.oninput = salvarEstadoFirebase;
+      descontoInput.oninput = salvarEstadoFirebase;
+
+      // Escutar alterações no Firebase e atualizar UI local
+      onValue(trikeRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          remainingTime = data.remainingTime || 0;
+          totalTime = data.totalTime || 0;
+          emUso = data.emUso || false;
+
+          // Atualiza campos UI
+          pagoSelect.value = data.pago || "nao";
+          valorInput.value = data.valor != null ? data.valor : "";
+          descontoInput.value = data.desconto != null ? data.desconto : "";
+
+          updateDisplay();
+
+          // Se o timer está em uso e timer local não está rodando, iniciar local
+          if (emUso && !timer) {
+            startTimer();
+          } else if (!emUso && timer) {
+            pauseTimer();
+          }
+        } else {
+          // Sem dados no firebase, reset local
+          resetTimer();
+        }
+      });
     }
 
+    // Gera relatório somando valores - desconto
     function gerarRelatorio() {
-      const total = faturamento.reduce((sum, val) => sum + val, 0);
-      document.getElementById('resultadoRelatorio').textContent = \`Total Faturado: R$ \${total.toFixed(2)}\`;
+      let totalFaturado = 0;
+      // Pega todos os dados no DB para somar
+      const dbRef = ref(db, "trikes");
+      get(dbRef).then((snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          for (const key in data) {
+            if (data.hasOwnProperty(key)) {
+              const trike = data[key];
+              const valor = trike.valor || 0;
+              const desconto = trike.desconto || 0;
+              totalFaturado += Math.max(0, valor - desconto);
+            }
+          }
+          document.getElementById(
+            "resultadoRelatorio"
+          ).textContent = `Total Faturado: R$ ${totalFaturado.toFixed(2)}`;
+        } else {
+          document.getElementById("resultadoRelatorio").textContent =
+            "Nenhum dado disponível";
+        }
+      });
     }
 
+    // Cria UI dos trikes
     for (let i = 0; i < trikeCount; i++) {
       createTrike(i);
-    }
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js');
-      });
     }
   </script>
 </body>
